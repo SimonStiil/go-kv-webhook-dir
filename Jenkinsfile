@@ -9,7 +9,7 @@ podTemplate(yaml: '''
     spec:
       containers:
       - name: kaniko
-        image: gcr.io/kaniko-project/executor:v1.20.0-debug
+        image: gcr.io/kaniko-project/executor:v1.22.0-debug
         command:
         - sleep
         args: 
@@ -17,6 +17,15 @@ podTemplate(yaml: '''
         volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
+      - name: manifest-tool
+        image: mplatform/manifest-tool:alpine-v2.1.6
+        command:
+        - sleep
+        args: 
+        - 99d
+        volumeMounts:
+        - name: kaniko-secret
+          mountPath: /root/.docker
       - name: golang
         image: golang:1.22.1-alpine3.19
         command:
@@ -110,6 +119,18 @@ podTemplate(yaml: '''
             sh '''
                 /kaniko/executor --force --context `pwd` --log-format text --custom-platform=linux/arm64 --destination $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME-arm64 --label org.opencontainers.image.description="Build based on $PACKAGE_CONTAINER_SOURCE/commit/$GIT_COMMIT" --label org.opencontainers.image.revision=$GIT_COMMIT --label org.opencontainers.image.version=$GIT_BRANCH
               '''
+          }
+        }
+      }
+      container('manifest-tool') {
+        stage('Build combined manifest') {
+          sh 'echo $HOME && pwd && whoami'
+          withEnv(["GIT_COMMIT=${scmData.GIT_COMMIT}", "PACKAGE_NAME=${properties.PACKAGE_NAME}", "PACKAGE_DESTINATION=${properties.PACKAGE_DESTINATION}", "PACKAGE_CONTAINER_SOURCE=${properties.PACKAGE_CONTAINER_SOURCE}", "GIT_BRANCH=${BRANCH_NAME}"]) {
+            if (isMainBranch()){
+              sh 'manifest-tool push from-args --platforms linux/amd64,linux/arm64 --template $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME-ARCH --tags latest --target $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME'
+            } else {
+              sh 'manifest-tool push from-args --platforms linux/amd64,linux/arm64 --template $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME-ARCH --target $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME'
+            }
           }
         }
       }
