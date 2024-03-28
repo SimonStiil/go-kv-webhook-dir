@@ -60,15 +60,40 @@ podTemplate(yaml: '''
           '''
         }
       }
-      stage('Generate Dockerfile AMD64') {
-        sh '''
-          ./dockerfilegen.sh amd64
-        '''
+      stage('Build Application ARM64') {
+        withEnv(['CGO_ENABLED=0', 'GOOS=linux', 'GOARCH=arm64', "PACKAGE_NAME=${properties.PACKAGE_NAME}"]) {
+          sh '''
+            go build -ldflags="-w -s" -o $PACKAGE_NAME-arm64 .
+          '''
+        }
       }
     }
     if ( !gitCommitMessage.startsWith("renovate/") || ! gitCommitMessage.startsWith("WIP") ) {
-      stage('Build Docker Image') {
-        container('kaniko') {
+      container('golang') {
+        stage('Generate Dockerfile AMD64') {
+          sh '''
+            ./dockerfilegen.sh amd64
+          '''
+        }
+      }
+      container('kaniko') {
+        stage('Build Docker Image AMD64') {
+          withEnv(["GIT_COMMIT=${scmData.GIT_COMMIT}", "PACKAGE_NAME=${properties.PACKAGE_NAME}", "PACKAGE_DESTINATION=${properties.PACKAGE_DESTINATION}", "PACKAGE_CONTAINER_SOURCE=${properties.PACKAGE_CONTAINER_SOURCE}", "GIT_BRANCH=${BRANCH_NAME}"]) {
+            sh '''
+                /kaniko/executor --force --context `pwd` --log-format text --destination $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME-amd64 --label org.opencontainers.image.description="Build based on $PACKAGE_CONTAINER_SOURCE/commit/$GIT_COMMIT" --label org.opencontainers.image.revision=$GIT_COMMIT --label org.opencontainers.image.version=$GIT_BRANCH
+              '''
+          }
+        }
+      }
+      container('golang') {
+        stage('Generate Dockerfile ARM64') {
+          sh '''
+            ./dockerfilegen.sh arm64
+          '''
+        }
+      }
+      container('kaniko') {
+        stage('Build Docker Image ARM64') {
           withEnv(["GIT_COMMIT=${scmData.GIT_COMMIT}", "PACKAGE_NAME=${properties.PACKAGE_NAME}", "PACKAGE_DESTINATION=${properties.PACKAGE_DESTINATION}", "PACKAGE_CONTAINER_SOURCE=${properties.PACKAGE_CONTAINER_SOURCE}", "GIT_BRANCH=${BRANCH_NAME}"]) {
             /*
             if (isMainBranch()){
@@ -83,8 +108,7 @@ podTemplate(yaml: '''
             }
             */
             sh '''
-                /kaniko/executor --force --context `pwd` --log-format text --destination $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME-amd64 --label org.opencontainers.image.description="Build based on $PACKAGE_CONTAINER_SOURCE/commit/$GIT_COMMIT" --label org.opencontainers.image.revision=$GIT_COMMIT --label org.opencontainers.image.version=$GIT_BRANCH
-
+                /kaniko/executor --force --context `pwd` --log-format text --custom-platform=linux/arm64 --destination $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME-arm64 --label org.opencontainers.image.description="Build based on $PACKAGE_CONTAINER_SOURCE/commit/$GIT_COMMIT" --label org.opencontainers.image.revision=$GIT_COMMIT --label org.opencontainers.image.version=$GIT_BRANCH
               '''
           }
         }
