@@ -27,14 +27,12 @@ podTemplate(yaml: '''
         - name: kaniko-secret
           mountPath: /root/.docker
       - name: golang
-        image: golang:1.22.1-alpine3.19
+        image: golang:1.22.2-alpine3.19
         command:
         - sleep
         args: 
         - 99d
       restartPolicy: Never
-      nodeSelector: 
-        kubernetes.io/arch: amd64
       volumes:
       - name: kaniko-secret
         secret:
@@ -56,9 +54,9 @@ podTemplate(yaml: '''
     }
     container('golang') {
       stage('UnitTests') {
-        withEnv(['CGO_ENABLED=0', 'GOOS=linux', 'GOARCH=amd64']) {
+        withEnv(['CGO_ENABLED=0']) {
           sh '''
-            go test .
+            go test . -v
           '''
         }
       }
@@ -104,18 +102,6 @@ podTemplate(yaml: '''
       container('kaniko') {
         stage('Build Docker Image ARM64') {
           withEnv(["GIT_COMMIT=${scmData.GIT_COMMIT}", "PACKAGE_NAME=${properties.PACKAGE_NAME}", "PACKAGE_DESTINATION=${properties.PACKAGE_DESTINATION}", "PACKAGE_CONTAINER_SOURCE=${properties.PACKAGE_CONTAINER_SOURCE}", "GIT_BRANCH=${BRANCH_NAME}"]) {
-            /*
-            if (isMainBranch()){
-              sh '''
-                /kaniko/executor --force --context `pwd` --log-format text --destination $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME --destination $PACKAGE_DESTINATION/$PACKAGE_NAME:latest --label org.opencontainers.image.description="Build based on $PACKAGE_CONTAINER_SOURCE/commit/$GIT_COMMIT" --label org.opencontainers.image.revision=$GIT_COMMIT --label org.opencontainers.image.version=$GIT_BRANCH
-              '''
-            } else {
-              sh '''
-                /kaniko/executor --force --context `pwd` --log-format text --destination $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME --label org.opencontainers.image.description="Build based on $PACKAGE_CONTAINER_SOURCE/commit/$GIT_COMMIT" --label org.opencontainers.image.revision=$GIT_COMMIT --label org.opencontainers.image.version=$GIT_BRANCH
-
-              '''
-            }
-            */
             sh '''
                 /kaniko/executor --force --context `pwd` --log-format text --custom-platform=linux/arm64 --destination $PACKAGE_DESTINATION/$PACKAGE_NAME:$BRANCH_NAME-arm64 --label org.opencontainers.image.description="Build based on $PACKAGE_CONTAINER_SOURCE/commit/$GIT_COMMIT" --label org.opencontainers.image.revision=$GIT_COMMIT --label org.opencontainers.image.version=$GIT_BRANCH
               '''
